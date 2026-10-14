@@ -1,0 +1,51 @@
+name: Fedora RPM
+
+on:
+  workflow_dispatch:
+  push:
+    tags: [ "v*" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: dnf install -y gcc gcc-c++ make cmake perl pkgconf-pkg-config libxkbcommon-devel wayland-devel libdrm-devel mesa-libgbm-devel mesa-libEGL-devel mesa-libGL-devel fontconfig-devel freetype-devel expat-devel rpm-build curl git
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-generate-rpm
+        run: cargo install cargo-generate-rpm
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Build RPM
+        run: cargo generate-rpm
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cosmic-ext-applet-sysinfo-rpm
+          path: target/generate-rpm/*.rpm
+
+      - name: Attach RPM to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          files: target/generate-rpm/*.rpm
